@@ -53,7 +53,7 @@ class Group[+A <: Node] private[antixml] (private[antixml] val nodes: Vector[A])
   
   def updated[B >: A <: Node](index: Int, node: B) = new Group(nodes.updated(index, node))
   
-  def \[B, That <: Traversable[B]](selector: Selector[B, That])(implicit cbf: CanBuildFromWithZipper[Zipper[A], B, That]): That = {
+  def \[B, That <: Traversable[B]](selector: Selector[B, That])(implicit cbf: CanBuildFromWithZipper[Zipper[Node], B, That]): That = {
     if (matches(selector)) {
       val results = nodes map {
         case e @ Elem(_, _, _, children) => {
@@ -105,13 +105,13 @@ class Group[+A <: Node] private[antixml] (private[antixml] val nodes: Vector[A])
     }
   }
   
-  def \\[B, That <: IndexedSeq[B]](selector: Selector[B, That])(implicit cbf: CanBuildFromWithZipper[Traversable[_], B, That]): That = {
+  def \\[B, That <: Traversable[B]](selector: Selector[B, That])(implicit cbf: CanBuildFromWithZipper[Zipper[Node], B, That], cbf2: CanBuildFrom[Traversable[_], B, That]): That = {
     val recursive = this flatMap {
       case Elem(_, _, _, children) if matches(selector) => children \\ selector
-      case _ => cbf().result
+      case _ => cbf(Vector()).result
     }
     
-    (this \ selector) ++ recursive
+    cbf.concat(this \ selector, recursive)
   }
   
   def toVector = nodes
@@ -157,6 +157,19 @@ object Group {
             def parent = error("No zipper context available")
           }
         }
+      }
+      
+      override def concat[A2 <: A](left: Traversable[A2], right: Traversable[A2])(implicit cbf: CanBuildFrom[Traversable[_], A2, Zipper[A]]): Zipper[A] = (left, right) match {
+        case (left: Zipper[A], right: Zipper[A]) => {
+          val combination: Vector[A] = left.toVector.++(right.toVector)(Vector.canBuildFrom[A])   // making this implicit triggers a compiler bug that causes infinite compilation times
+          
+          new Group[A](combination) with Zipper[A] {
+            val map = left.map      // TODO translate
+            def parent = left.parent    // TODO do...something
+          }
+        }
+          
+        case _ => super.concat(left, right)(cbf)
       }
     }
   }

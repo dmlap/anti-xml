@@ -56,6 +56,31 @@ object ZipperSpecs extends Specification {
     }
   }
   
+  "zipper updates within '\\\\' results" should {
+    "rebuild updated at two levels" in {
+      val authors = bookstore \\ "author"
+      val author0 = authors(0).copy(attrs=Map("updated" -> "yes"))
+      val author2 = authors(2).copy(attrs=Map("updated" -> "yes"))
+      val author3 = authors(3).copy(attrs=Map("updated" -> "yes"))
+      
+      val bookstore2: Group[Node] = authors.updated(0, author0).updated(2, author2).updated(3, author3).unselect
+      
+      // find afresh without using \
+      bookstore2.head.asInstanceOf[Elem].name mustEqual "bookstore"
+      bookstore2.head.asInstanceOf[Elem].children(0).asInstanceOf[Elem].name mustEqual "book"
+      
+      bookstore2.head.asInstanceOf[Elem].children(0).asInstanceOf[Elem].children.length mustBe 2
+      bookstore2.head.asInstanceOf[Elem].children(0).asInstanceOf[Elem].children(1).asInstanceOf[Elem].attrs mustEqual Map("updated" -> "yes")
+      
+      bookstore2.head.asInstanceOf[Elem].children(1).asInstanceOf[Elem].children.length mustBe 2
+      bookstore2.head.asInstanceOf[Elem].children(1).asInstanceOf[Elem].children(1).asInstanceOf[Elem].attrs mustEqual Map()
+      
+      bookstore2.head.asInstanceOf[Elem].children(2).asInstanceOf[Elem].children.length mustBe 3
+      bookstore2.head.asInstanceOf[Elem].children(2).asInstanceOf[Elem].children(1).asInstanceOf[Elem].attrs mustEqual Map("updated" -> "yes")
+      bookstore2.head.asInstanceOf[Elem].children(2).asInstanceOf[Elem].children(2).asInstanceOf[Elem].attrs mustEqual Map("updated" -> "yes")
+    }
+  }
+  
   def resource(filename: String) =
     XML fromSource (Source fromURL (getClass getResource ("/" + filename)))   // oooh, lispy!
 }
