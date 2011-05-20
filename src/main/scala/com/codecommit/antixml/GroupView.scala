@@ -33,36 +33,39 @@ import javax.xml.stream.XMLStreamReader
 import javax.xml.stream.XMLStreamConstants._
 import scala.collection.IndexedSeqLike
 
-class GroupNodeView private[antixml](xmlReader: XMLStreamReader) extends IndexedSeq[NodeView] with IndexedSeqLike[NodeView, GroupNodeView] {
+class GroupNodeView private[antixml](_events: =>Stream[XmlEvent]) extends IndexedSeq[NodeView] with IndexedSeqLike[NodeView, GroupNodeView] {
+  private lazy val events = _events
   
   override protected[this] def newBuilder = GroupView.newBuilder[NodeView]
-  
-  private val nodes: CatamorphicVector[XMLStreamReader, NodeView] = {
-    val back = CatamorphicVector(xmlReader) { xmlReader =>
-      if (xmlReader.hasNext) {
-        (xmlReader.next match {
-          case `START_ELEMENT` => Some(xmlReader, new ElemView(xmlReader))
-          case `CHARACTERS` => Some(xmlReader, new TextView(xmlReader))
-          case `END_ELEMENT` => None
-          case `END_DOCUMENT` => None
-        })
-      } else {
-        None
+  private lazy val nodes: CatamorphicVector[Stream[XmlEvent], (Stream[XmlEvent], NodeView)] =
+    CatamorphicVector(events) { events =>
+      events match {
+        case Stream.cons(startElement: StartElement, remaining) => {
+          val elem = new ElemView(events)
+          val result = (elem.parse(), elem)
+            Some(result._1, result)
+        }
+        case Stream.cons(EndElement, remaining) =>
+          None
+        case Stream.cons(endElement: Characters, remaining) => {
+          val text = new TextView(events)
+          val result = (text.parse(), text)
+          Some(result._1, result)
+        }
+        case _ => None
       }
     }
-    
-    // ensure subtrees are forced before continuing parsing
-    back map { node: NodeView =>
-      node.force()
-      node
-    }
+
+  def parse(): Stream[XmlEvent] = nodes.length match {
+   case 0 => events.tail
+   case _ => nodes(nodes.length - 1)._1
   }
 
-  override def apply(index: Int): NodeView = nodes(index)
+  override def apply(index: Int): NodeView = nodes(index)._2
   
   override def length = nodes.length
   
-  override def toString = "GroupNodeView(" + nodes + ")"
+  override def toString = "GroupNodeView(" + nodes.map(_._2) + ")"
 }
 
 object GroupView {

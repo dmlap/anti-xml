@@ -31,10 +31,13 @@ package com.codecommit.antixml
 import org.specs2.matcher._
 import org.specs2.mutable._
 
-class NodeViewSpecs extends Specification {
+class NodeViewSpecs extends Specification with Expectations {
   
-  val beReversiblySerializable: Matcher[String] =
-    ({ xml: String => NodeView.fromString(xml).toString == xml }, "does not preserve itself through serialization")
+  val beReversiblySerializable: Matcher[String] = new Matcher[String] {
+    def apply[S <: String](xml: Expectable[S]) =
+      (new BeEqualTo(xml.value)).apply(createExpectable(NodeView.fromString(xml.value).toString.asInstanceOf[S]))
+  }
+    ({ xml: String => NodeView.fromString(xml).toString == xml }, "does not preserve itself through serialization.")
 
   "elements" should {
     "handle element namespaces" in {

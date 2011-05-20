@@ -31,48 +31,74 @@ package com.codecommit.antixml
 import java.io.{ByteArrayInputStream, InputStream}
 import javax.xml.stream.{XMLInputFactory, XMLStreamConstants, XMLStreamReader}
 
+sealed trait XmlEvent
+case class StartElement(ns: Option[String],
+                        name: String,
+                        namespaces: Map[String, String],
+                        attrs: Map[String, String]) extends XmlEvent
+object EndElement extends XmlEvent
+case class Characters(text: String) extends XmlEvent
+object EndDocument extends XmlEvent
+
 sealed trait NodeView {
-  private[antixml] def force(): Unit
+  private[antixml] def parse(): Stream[XmlEvent]
 }
 object NodeView {
   def apply(xmlReader: XMLStreamReader): ElemView = {
-    xmlReader.next
-    new ElemView(xmlReader)
+    def parseEvent: Stream[XmlEvent] =
+      xmlReader.next match {
+        case XMLStreamConstants.START_ELEMENT => {
+          val uri = xmlReader.getNamespaceURI
+          val startElement =
+            StartElement(if (uri == null || uri == "") None else Some(uri),
+                         xmlReader.getLocalName,
+                         Map((0 until xmlReader.getNamespaceCount) map { i =>
+                           xmlReader.getNamespacePrefix(i) -> xmlReader.getNamespaceURI(i)
+                         }: _*),
+                         Map((0 until xmlReader.getAttributeCount) map { i =>
+                           (xmlReader.getAttributeNamespace(i) match {
+                             case ns if ns == null || ns == "" => xmlReader.getAttributeLocalName(i)
+                             case namespace => xmlReader.getAttributePrefix(i) + ":" + xmlReader.getAttributeLocalName(i)
+                           }) -> xmlReader.getAttributeValue(i)
+                         }: _*))
+          Stream.cons(startElement, parseEvent)
+        }
+        case XMLStreamConstants.CHARACTERS =>
+          Stream.cons(Characters(new String(xmlReader.getTextCharacters,
+                                            xmlReader.getTextStart,
+                                            xmlReader.getTextLength)), parseEvent)
+        case XMLStreamConstants.END_ELEMENT =>
+          Stream.cons(EndElement, parseEvent)
+        case XMLStreamConstants.END_DOCUMENT =>
+          Stream.cons(EndDocument, parseEvent)
+      }
+    new ElemView(parseEvent)
   }
-
   def fromString(xml: String): ElemView =
     fromInputStream(new ByteArrayInputStream(xml.getBytes))
   def fromInputStream(xml: InputStream) =
     apply(XMLInputFactory.newInstance().createXMLStreamReader(xml))
 }
-
-class ElemView private[antixml](xmlReader: XMLStreamReader) extends NodeView {
-  lazy val (ns: Option[String],
-            name: String,
-            namespaces: Map[String, String],
-            attrs: Map[String, String],
-            children: GroupNodeView) = {
-    val uri = xmlReader.getNamespaceURI
-    (if (uri == null || uri == "") None else Some(uri),
-     xmlReader.getLocalName,
-     Map((0 until xmlReader.getNamespaceCount) map { i =>
-       xmlReader.getNamespacePrefix(i) -> xmlReader.getNamespaceURI(i)
-     }: _*),
-     Map((0 until xmlReader.getAttributeCount) map { i =>
-       (xmlReader.getAttributeNamespace(i) match {
-         case ns if ns == null || ns == "" => xmlReader.getAttributeLocalName(i)
-         case namespace => xmlReader.getAttributePrefix(i) + ":" + xmlReader.getAttributeLocalName(i)
-       }) -> xmlReader.getAttributeValue(i)
-     }: _*),
-     new GroupNodeView(xmlReader))
+class ElemView private[antixml](events: Stream[XmlEvent]) extends NodeView {
+  val (ns: Option[String],
+       name: String,
+       namespaces: Map[String, String],
+       attrs: Map[String, String]) = {
+    val event: StartElement = events.head.asInstanceOf[StartElement]
+    (event.ns,
+     event.name,
+     event.namespaces,
+     event.attrs)
   }
-
-  private[antixml] def force() {
-    children.map(_.force())
+  private[antixml] lazy val (_children, remaining) = {
+    val children = new GroupNodeView(events.tail)
+    (children, children.parse())
   }
-  
+  private[antixml] def parse() = remaining.tail
+  lazy val children: GroupNodeView = _children
+
   lazy val qName = ns map (_ + ":" + name) getOrElse name
-  override lazy val toString: String = {
+  override def toString: String = {
     val namespaces = ("" /: this.namespaces) { (result, namespace) =>
         result + " xmlns:" + namespace._1 + "='" + namespace._2 + "'"
       }
@@ -88,11 +114,8 @@ class ElemView private[antixml](xmlReader: XMLStreamReader) extends NodeView {
   }
 }
 
-case class TextView private[antixml](private val xmlReader: XMLStreamReader) extends NodeView {
-  lazy val text: String =
-    new String(xmlReader.getTextCharacters, xmlReader.getTextStart, xmlReader.getTextLength)
-  private[antixml] def force() {
-    text
-  }
-  override lazy val toString: String = text
+class TextView private[antixml](events: Stream[XmlEvent]) extends NodeView {
+  val text: String = events.head.asInstanceOf[Characters].text
+  private[antixml] def parse() = events.tail
+  override val toString: String = text
 }
