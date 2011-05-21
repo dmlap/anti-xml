@@ -47,7 +47,7 @@ class GroupNodeView private[antixml](_events: =>Stream[XmlEvent]) extends Indexe
         }
         case Stream.cons(EndElement, remaining) =>
           None
-        case Stream.cons(endElement: Characters, remaining) => {
+        case Stream.cons(characters: Characters, remaining) => {
           val text = new TextView(events)
           val result = (text.parse(), text)
           Some(result._1, result)
@@ -56,10 +56,7 @@ class GroupNodeView private[antixml](_events: =>Stream[XmlEvent]) extends Indexe
       }
     }
 
-  def parse(): Stream[XmlEvent] = nodes.length match {
-   case 0 => events.tail
-   case _ => nodes(nodes.length - 1)._1
-  }
+  def parse(): Stream[XmlEvent] = events.drop(nodes.length)
 
   override def apply(index: Int): NodeView = nodes(index)._2
   

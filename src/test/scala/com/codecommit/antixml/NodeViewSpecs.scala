@@ -59,7 +59,7 @@ class NodeViewSpecs extends Specification with Expectations {
       "<a><b><c>hi</c></b></a>" must beReversiblySerializable
     }
     "handle sibling elements" in {
-      "<a><b /><c /></a>" must beReversiblySerializable
+      "<a0><b0 /><c0 /></a0>" must beReversiblySerializable
     }
     "handle mixed type children" in {
       "<a><strong>anti</strong>-xml</a>" must beReversiblySerializable

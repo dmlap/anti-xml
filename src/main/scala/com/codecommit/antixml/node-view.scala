@@ -45,7 +45,7 @@ sealed trait NodeView {
 }
 object NodeView {
   def apply(xmlReader: XMLStreamReader): ElemView = {
-    def parseEvent: Stream[XmlEvent] =
+    def parseEvent(): Stream[XmlEvent] =
       xmlReader.next match {
         case XMLStreamConstants.START_ELEMENT => {
           val uri = xmlReader.getNamespaceURI
@@ -61,18 +61,18 @@ object NodeView {
                              case namespace => xmlReader.getAttributePrefix(i) + ":" + xmlReader.getAttributeLocalName(i)
                            }) -> xmlReader.getAttributeValue(i)
                          }: _*))
-          Stream.cons(startElement, parseEvent)
+          Stream.cons(startElement, parseEvent())
         }
         case XMLStreamConstants.CHARACTERS =>
           Stream.cons(Characters(new String(xmlReader.getTextCharacters,
                                             xmlReader.getTextStart,
-                                            xmlReader.getTextLength)), parseEvent)
+                                            xmlReader.getTextLength)), parseEvent())
         case XMLStreamConstants.END_ELEMENT =>
-          Stream.cons(EndElement, parseEvent)
+          Stream.cons(EndElement, parseEvent())
         case XMLStreamConstants.END_DOCUMENT =>
-          Stream.cons(EndDocument, parseEvent)
+          Stream.cons(EndDocument, Stream.empty)
       }
-    new ElemView(parseEvent)
+    new ElemView(parseEvent())
   }
   def fromString(xml: String): ElemView =
     fromInputStream(new ByteArrayInputStream(xml.getBytes))
@@ -97,7 +97,7 @@ class ElemView private[antixml](events: Stream[XmlEvent]) extends NodeView {
   private[antixml] def parse() = remaining.tail
   lazy val children: GroupNodeView = _children
 
-  lazy val qName = ns map (_ + ":" + name) getOrElse name
+  val qName = ns map (_ + ":" + name) getOrElse name
   override def toString: String = {
     val namespaces = ("" /: this.namespaces) { (result, namespace) =>
         result + " xmlns:" + namespace._1 + "='" + namespace._2 + "'"
