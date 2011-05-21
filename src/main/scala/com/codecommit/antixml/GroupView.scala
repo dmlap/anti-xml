@@ -28,7 +28,7 @@
 
 package com.codecommit.antixml
 
-import util.CatamorphicVector
+import util.LazyVector
 import javax.xml.stream.XMLStreamReader
 import javax.xml.stream.XMLStreamConstants._
 import scala.collection.IndexedSeqLike
@@ -37,8 +37,8 @@ class GroupNodeView private[antixml](_events: =>Stream[XmlEvent]) extends Indexe
   private lazy val events = _events
   
   override protected[this] def newBuilder = GroupView.newBuilder[NodeView]
-  private lazy val nodes: CatamorphicVector[Stream[XmlEvent], (Stream[XmlEvent], NodeView)] =
-    CatamorphicVector(events) { events =>
+  private lazy val nodes: LazyVector[Stream[XmlEvent], (Stream[XmlEvent], NodeView)] =
+    LazyVector(events) { events =>
       events match {
         case Stream.cons(startElement: StartElement, remaining) => {
           val elem = new ElemView(events)
